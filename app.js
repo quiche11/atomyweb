@@ -1,231 +1,315 @@
-"use strict";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const DATABASE_PAGE_SIZE = 50;
-const SQL_WASM_DIRECTORY =
-  "https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.12.0/";
+const SUPABASE_URL = "https://pyljspqiwmbjenxjfcgk.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_qw745bHXzFA5G_sZPCTkVA_gWPFZOnA";
+const PAGE_SIZE = 50;
 
+const TABLES = {
+  users: {
+    label: "Пользователи",
+    columns: [
+      "id",
+      "username",
+      "first_name",
+      "last_name",
+      "language_code",
+      "is_bot",
+      "is_admin",
+      "registered_at",
+      "total_messages",
+    ],
+    searchText: ["username", "first_name", "last_name", "language_code"],
+    searchNumber: ["id"],
+    orderBy: "id",
+  },
+  admins: {
+    label: "Администраторы",
+    columns: ["id", "added_at"],
+    searchNumber: ["id"],
+    orderBy: "id",
+  },
+  support_requests: {
+    label: "Обращения",
+    columns: ["id", "user_id", "created_at", "answered", "admin_ids"],
+    searchText: ["id"],
+    searchNumber: ["user_id"],
+    orderBy: "created_at",
+    ascending: false,
+  },
+  bot_settings: {
+    label: "Настройки бота",
+    columns: ["key", "value"],
+    searchText: ["key", "value"],
+    orderBy: "key",
+  },
+  user_topics: {
+    label: "Темы пользователей",
+    columns: ["user_id", "chat_id", "message_thread_id"],
+    searchNumber: ["user_id", "chat_id"],
+    orderBy: "user_id",
+  },
+};
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 const elements = {
-  file: document.querySelector("#database-file"),
+  loginPanel: document.querySelector("#login-panel"),
+  loginForm: document.querySelector("#login-form"),
+  email: document.querySelector("#email"),
+  password: document.querySelector("#password"),
+  signOut: document.querySelector("#sign-out"),
+  dashboard: document.querySelector("#dashboard"),
   table: document.querySelector("#table-select"),
   searchForm: document.querySelector("#search-form"),
   search: document.querySelector("#search-input"),
-  searchButton: document.querySelector("#search-button"),
-  name: document.querySelector("#database-name"),
-  count: document.querySelector("#result-count"),
+  tableLabel: document.querySelector("#table-label"),
+  resultCount: document.querySelector("#result-count"),
   status: document.querySelector("#status"),
-  head: document.querySelector("#table-head"),
-  body: document.querySelector("#table-body"),
+  appStatus: document.querySelector("#app-status"),
+  tableHead: document.querySelector("#table-head"),
+  tableBody: document.querySelector("#table-body"),
   previous: document.querySelector("#previous-page"),
   next: document.querySelector("#next-page"),
   page: document.querySelector("#page-indicator"),
 };
 
-let database = null;
 let currentPage = 0;
-let totalRows = 0;
+let requestVersion = 0;
 
-function quoteIdentifier(identifier) {
-  return `"${identifier.replaceAll('"', '""')}"`;
+function showAppStatus(message, isError = false) {
+  elements.appStatus.textContent = message;
+  elements.appStatus.classList.toggle("error", isError);
 }
 
-function runQuery(sql, parameters = []) {
-  const statement = database.prepare(sql);
-  try {
-    statement.bind(parameters);
-    const rows = [];
-    while (statement.step()) {
-      rows.push(statement.getAsObject());
-    }
-    return rows;
-  } finally {
-    statement.free();
-  }
-}
-
-function setStatus(message, isError = false) {
+function showTableStatus(message, isError = false) {
   elements.status.textContent = message;
   elements.status.classList.toggle("error", isError);
   elements.status.hidden = !message;
 }
 
 function clearTable() {
-  elements.head.replaceChildren();
-  elements.body.replaceChildren();
-  elements.count.textContent = "";
+  elements.tableHead.replaceChildren();
+  elements.tableBody.replaceChildren();
+  elements.resultCount.textContent = "";
   elements.page.textContent = "";
 }
 
-function setDatabaseControlsEnabled(enabled) {
-  elements.table.disabled = !enabled;
-  elements.search.disabled = !enabled;
-  elements.searchButton.disabled = !enabled;
+function escapeSearchText(value) {
+  return value
+    .replace(/[^\p{L}\p{N} @._+-]/gu, "")
+    .trim()
+    .slice(0, 100);
 }
 
-function loadTableNames() {
-  return runQuery(
-    "SELECT name FROM sqlite_master " +
-      "WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
-  ).map((row) => row.name);
+function applySearch(query, tableInfo, search) {
+  if (!search) {
+    return query;
+  }
+
+  const clauses = tableInfo.searchText.map(
+    (column) => `${column}.ilike."%${search}%"`,
+  );
+  const numericColumns = tableInfo.searchNumber || [];
+  if (/^\d+$/.test(search)) {
+    clauses.push(...numericColumns.map((column) => `${column}.eq.${search}`));
+  }
+  if (/^[\da-f-]+$/i.test(search) && tableInfo.searchText.includes("id")) {
+    clauses.push(`id.eq.${search}`);
+  }
+  return clauses.length ? query.or(clauses.join(",")) : query;
 }
 
-function updateTable() {
-  if (!database || !elements.table.value) {
-    clearTable();
+function renderRows(columns, rows) {
+  const header = document.createElement("tr");
+  for (const column of columns) {
+    const cell = document.createElement("th");
+    cell.scope = "col";
+    cell.textContent = column;
+    header.append(cell);
+  }
+  elements.tableHead.replaceChildren(header);
+
+  if (rows.length === 0) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = columns.length;
+    cell.textContent = "Записей нет";
+    row.append(cell);
+    elements.tableBody.replaceChildren(row);
     return;
   }
 
-  const tableName = elements.table.value;
-  const quotedTable = quoteIdentifier(tableName);
-  const columns = runQuery(`PRAGMA table_info(${quotedTable})`).map(
-    (column) => column.name,
-  );
-  const search = elements.search.value.trim();
-  const where = search
-    ? ` WHERE ${columns
-        .map((column) => `instr(unicode_lower(CAST(${quoteIdentifier(column)} AS TEXT)), unicode_lower(?)) > 0`)
-        .join(" OR ")}`
-    : "";
-  const parameters = search ? columns.map(() => search) : [];
-
-  totalRows = runQuery(
-    `SELECT COUNT(*) AS count FROM ${quotedTable}${where}`,
-    parameters,
-  )[0].count;
-  const pageCount = Math.max(1, Math.ceil(totalRows / DATABASE_PAGE_SIZE));
-  currentPage = Math.min(currentPage, pageCount - 1);
-  const rows = runQuery(
-    `SELECT * FROM ${quotedTable}${where} LIMIT ? OFFSET ?`,
-    [...parameters, DATABASE_PAGE_SIZE, currentPage * DATABASE_PAGE_SIZE],
-  );
-
-  const headerRow = document.createElement("tr");
-  for (const column of columns) {
-    const header = document.createElement("th");
-    header.scope = "col";
-    header.textContent = column;
-    headerRow.append(header);
-  }
-  elements.head.replaceChildren(headerRow);
-
-  const bodyRows = rows.map((row) => {
-    const tr = document.createElement("tr");
+  const renderedRows = rows.map((data) => {
+    const row = document.createElement("tr");
     for (const column of columns) {
       const cell = document.createElement("td");
-      cell.textContent = row[column] === null ? "—" : String(row[column]);
-      tr.append(cell);
+      const value = data[column];
+      cell.textContent =
+        value === null || value === undefined
+          ? "—"
+          : typeof value === "object"
+            ? JSON.stringify(value)
+            : String(value);
+      row.append(cell);
     }
-    return tr;
+    return row;
   });
-  if (bodyRows.length === 0) {
-    const tr = document.createElement("tr");
-    const cell = document.createElement("td");
-    cell.colSpan = Math.max(columns.length, 1);
-    cell.textContent = "Записей нет";
-    tr.append(cell);
-    bodyRows.push(tr);
+  elements.tableBody.replaceChildren(...renderedRows);
+}
+
+async function loadTable() {
+  const version = ++requestVersion;
+  const tableName = elements.table.value;
+  const tableInfo = TABLES[tableName];
+  if (!tableInfo) {
+    return;
   }
-  elements.body.replaceChildren(...bodyRows);
-  elements.count.textContent = `Записей: ${totalRows.toLocaleString("ru-RU")}`;
+
+  clearTable();
+  showTableStatus("Загружаю данные…");
+  elements.previous.disabled = true;
+  elements.next.disabled = true;
+  elements.tableLabel.textContent = tableInfo.label;
+
+  const search = escapeSearchText(elements.search.value);
+  if (
+    search &&
+    tableInfo.searchText.length === 0 &&
+    !/^\d+$/.test(search)
+  ) {
+    showTableStatus("Для поиска в этой таблице введите числовой ID.");
+    elements.resultCount.textContent = "";
+    elements.page.textContent = "";
+    return;
+  }
+  let query = supabase
+    .from(tableName)
+    .select("*", { count: "exact" })
+    .order(tableInfo.orderBy, { ascending: tableInfo.ascending ?? true });
+  query = applySearch(query, tableInfo, search);
+
+  const start = currentPage * PAGE_SIZE;
+  const { data, error, count } = await query.range(start, start + PAGE_SIZE - 1);
+  if (version !== requestVersion) {
+    return;
+  }
+  if (error) {
+    showTableStatus(`Не удалось загрузить таблицу: ${error.message}`, true);
+    showAppStatus("Проверьте схему таблиц и настройки RLS в Supabase.", true);
+    return;
+  }
+
+  const columns = tableInfo.columns.filter(
+    (column) => data.length === 0 || column in data[0],
+  );
+  renderRows(columns, data);
+  const total = count || 0;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  elements.resultCount.textContent = `Записей: ${total.toLocaleString("ru-RU")}`;
   elements.page.textContent = `Страница ${currentPage + 1} из ${pageCount}`;
   elements.previous.disabled = currentPage === 0;
   elements.next.disabled = currentPage + 1 >= pageCount;
-  setStatus("");
+  showTableStatus("");
+  showAppStatus("");
 }
 
-async function handleFileSelection(file) {
-  if (!file) {
+async function showDashboard(session) {
+  elements.loginPanel.hidden = true;
+  elements.dashboard.hidden = true;
+  elements.signOut.hidden = false;
+  showAppStatus("Проверяю доступ к панели…");
+
+  const { data, error } = await supabase
+    .from("dashboard_access")
+    .select("user_id")
+    .eq("user_id", session.user.id)
+    .maybeSingle();
+  if (error) {
+    elements.signOut.hidden = true;
+    elements.loginPanel.hidden = false;
+    showAppStatus(
+      `Не удалось проверить доступ. Настройте таблицу dashboard_access и RLS в Supabase: ${error.message}`,
+      true,
+    );
+    return;
+  }
+  if (!data) {
+    await supabase.auth.signOut();
+    elements.signOut.hidden = true;
+    elements.loginPanel.hidden = false;
+    showAppStatus("У этой учетной записи нет доступа к панели.", true);
     return;
   }
 
-  if (database) {
-    database.close();
-    database = null;
-  }
-  clearTable();
-  setStatus("Открываю базу данных…");
-  setDatabaseControlsEnabled(false);
-  let nextDatabase = null;
-  try {
-    const SQL = await initSqlJs({
-      locateFile: (fileName) => `${SQL_WASM_DIRECTORY}${fileName}`,
-    });
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    nextDatabase = new SQL.Database(bytes);
-    nextDatabase.create_function("unicode_lower", (value) =>
-      value === null ? null : String(value).toLocaleLowerCase("ru"),
-    );
-    const tables = loadTableNamesFrom(nextDatabase);
-    if (tables.length === 0) {
-      throw new Error("В файле не найдены таблицы базы данных.");
-    }
-
-    database = nextDatabase;
-    elements.name.textContent = file.name;
-    elements.table.replaceChildren(
-      ...tables.map((tableName) => {
-        const option = document.createElement("option");
-        option.value = tableName;
-        option.textContent = tableName;
-        return option;
-      }),
-    );
-    elements.table.value = tables.includes("users") ? "users" : tables[0];
-    elements.search.value = "";
-    currentPage = 0;
-    setDatabaseControlsEnabled(true);
-    updateTable();
-  } catch (error) {
-    if (nextDatabase) {
-      nextDatabase.close();
-    }
-    database = null;
-    elements.name.textContent = "Файл базы не выбран";
-    elements.table.replaceChildren(new Option("Не удалось открыть базу", ""));
-    setDatabaseControlsEnabled(false);
-    setStatus(
-      `Не удалось открыть базу данных. Проверьте файл и подключение к библиотеке SQLite. Подробности: ${error.message}`,
-      true,
-    );
-  }
-}
-
-function loadTableNamesFrom(targetDatabase) {
-  const statement = targetDatabase.prepare(
-    "SELECT name FROM sqlite_master " +
-      "WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+  elements.dashboard.hidden = false;
+  elements.table.replaceChildren(
+    ...Object.entries(TABLES).map(([name, info]) => {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = info.label;
+      return option;
+    }),
   );
-  try {
-    const names = [];
-    while (statement.step()) {
-      names.push(statement.getAsObject().name);
-    }
-    return names;
-  } finally {
-    statement.free();
-  }
+  elements.table.value = "users";
+  currentPage = 0;
+  await loadTable();
 }
 
-elements.file.addEventListener("change", (event) => {
-  void handleFileSelection(event.currentTarget.files[0]);
+elements.loginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  showAppStatus("Выполняется вход…");
+  const { error } = await supabase.auth.signInWithPassword({
+    email: elements.email.value.trim(),
+    password: elements.password.value,
+  });
+  if (error) {
+    showAppStatus(`Не удалось войти: ${error.message}`, true);
+    return;
+  }
+  elements.password.value = "";
+});
+
+elements.signOut.addEventListener("click", async () => {
+  const { error } = await supabase.auth.signOut();
+  if (error) {
+    showAppStatus(`Не удалось выйти: ${error.message}`, true);
+    return;
+  }
+  elements.dashboard.hidden = true;
+  elements.signOut.hidden = true;
+  elements.loginPanel.hidden = false;
+  clearTable();
+  showAppStatus("Вы вышли из панели.");
 });
 
 elements.table.addEventListener("change", () => {
   currentPage = 0;
-  updateTable();
+  void loadTable();
 });
 
 elements.searchForm.addEventListener("submit", (event) => {
   event.preventDefault();
   currentPage = 0;
-  updateTable();
+  void loadTable();
 });
 
 elements.previous.addEventListener("click", () => {
   currentPage -= 1;
-  updateTable();
+  void loadTable();
 });
 
 elements.next.addEventListener("click", () => {
   currentPage += 1;
-  updateTable();
+  void loadTable();
+});
+
+supabase.auth.onAuthStateChange((_event, session) => {
+  window.setTimeout(() => {
+    if (session) {
+      void showDashboard(session);
+    } else {
+      elements.dashboard.hidden = true;
+      elements.signOut.hidden = true;
+      elements.loginPanel.hidden = false;
+    }
+  }, 0);
 });

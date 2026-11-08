@@ -22,6 +22,10 @@ select {
   font: inherit;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .page {
   width: min(1180px, calc(100% - 40px));
   margin: 0 auto;
@@ -51,71 +55,35 @@ h1 {
   letter-spacing: -0.04em;
 }
 
-.subtitle {
+h2 {
+  margin: 0;
+}
+
+.subtitle,
+.login-panel > p {
   margin: 10px 0 0;
   color: #667085;
-}
-
-#database-file {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  clip-path: inset(50%);
-}
-
-.file-button,
-.secondary-button {
-  min-height: 42px;
-  border: 1px solid #d5daea;
-  border-radius: 9px;
-  background: #fff;
-  color: #29365c;
-  cursor: pointer;
-  font-weight: 650;
-}
-
-.file-button {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  padding: 0 16px;
-  border-color: #5266c5;
-  background: #5266c5;
-  color: #fff;
-}
-
-.file-button:hover {
-  background: #4356b1;
-}
-
-.file-button:focus-within,
-#database-file:focus-visible + .file-button,
-button:focus-visible,
-input:focus-visible,
-select:focus-visible {
-  outline: 3px solid #aeb9f5;
-  outline-offset: 2px;
-}
-
-.notice {
-  margin-bottom: 22px;
-  padding: 14px 16px;
-  border: 1px solid #f1d89b;
-  border-radius: 10px;
-  background: #fff9e9;
-  color: #70520c;
   line-height: 1.55;
 }
 
-.toolbar {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
+.panel,
+.table-card {
+  border: 1px solid #e3e7f0;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 8px 28px rgb(23 32 51 / 4%);
+}
+
+.login-panel {
+  width: min(100%, 440px);
+  margin: 32px auto;
+  padding: 24px;
+}
+
+.login-panel form {
+  display: grid;
   gap: 16px;
-  margin-bottom: 18px;
+  margin-top: 22px;
 }
 
 .control {
@@ -137,6 +105,61 @@ select:focus-visible {
   color: #172033;
 }
 
+.login-panel .control input {
+  width: 100%;
+}
+
+.primary-button,
+.secondary-button {
+  min-height: 42px;
+  border: 1px solid #d5daea;
+  border-radius: 9px;
+  background: #fff;
+  color: #29365c;
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.primary-button {
+  padding: 0 16px;
+  border-color: #5266c5;
+  background: #5266c5;
+  color: #fff;
+}
+
+.primary-button:hover {
+  background: #4356b1;
+}
+
+.secondary-button {
+  padding: 0 14px;
+}
+
+.secondary-button:hover:not(:disabled) {
+  border-color: #aab4d4;
+  background: #f8f9fd;
+}
+
+.secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 3px solid #aeb9f5;
+  outline-offset: 2px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
 .search-control {
   display: flex;
   align-items: end;
@@ -151,28 +174,8 @@ select:focus-visible {
   min-width: min(340px, 35vw);
 }
 
-.secondary-button {
-  padding: 0 14px;
-}
-
-.secondary-button:hover:not(:disabled) {
-  border-color: #aab4d4;
-  background: #f8f9fd;
-}
-
-.secondary-button:disabled,
-select:disabled,
-input:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
 .table-card {
   overflow: hidden;
-  border: 1px solid #e3e7f0;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 8px 28px rgb(23 32 51 / 4%);
 }
 
 .table-heading {
@@ -197,7 +200,8 @@ input:disabled {
   text-align: center;
 }
 
-.status.error {
+.status.error,
+.app-status.error {
   color: #a32929;
 }
 
@@ -254,6 +258,12 @@ tbody tr:last-child td {
   text-align: center;
 }
 
+.app-status {
+  min-height: 24px;
+  margin: 14px 0 0;
+  text-align: center;
+}
+
 footer {
   padding-top: 18px;
   color: #7a8496;
@@ -271,14 +281,6 @@ footer {
   .toolbar {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .page-header {
-    gap: 18px;
-  }
-
-  .file-button {
-    justify-content: center;
   }
 
   .control input,
