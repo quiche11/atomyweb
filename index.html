@@ -1,1 +1,69 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f5f7fb">
+    <title>Просмотр базы данных бота</title>
+    <link rel="stylesheet" href="styles.css">
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.12.0/sql-wasm.js"></script>
+    <script defer src="app.js"></script>
+  </head>
+  <body>
+    <main class="page">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">Локальный просмотрщик SQLite</p>
+          <h1>База данных бота</h1>
+          <p class="subtitle">Файл обрабатывается в этом браузере и никуда не отправляется.</p>
+        </div>
+        <label class="file-button" for="database-file">Открыть файл базы</label>
+        <input id="database-file" type="file" accept=".sqlite,.sqlite3,.db,application/vnd.sqlite3">
+      </header>
 
+      <section class="notice" aria-label="Конфиденциальность">
+        <strong>Конфиденциальность:</strong>
+        не добавляйте файл базы в репозиторий — он может содержать личные данные пользователей.
+        Выберите его с устройства после открытия сайта.
+      </section>
+
+      <section class="toolbar" aria-label="Управление таблицей">
+        <label class="control">
+          <span>Таблица</span>
+          <select id="table-select" disabled>
+            <option value="">Сначала откройте базу</option>
+          </select>
+        </label>
+        <form id="search-form" class="search-control">
+          <label class="control" for="search-input">
+            <span>Поиск по таблице</span>
+            <input id="search-input" type="search" placeholder="Введите текст..." disabled>
+          </label>
+          <button id="search-button" class="secondary-button" type="submit" disabled>Найти</button>
+        </form>
+      </section>
+
+      <section class="table-card" aria-label="Содержимое базы данных">
+        <div class="table-heading">
+          <p id="database-name">Файл базы не выбран</p>
+          <p id="result-count" aria-live="polite"></p>
+        </div>
+        <div id="status" class="status" role="status" aria-live="polite">
+          Выберите файл bot.sqlite3, чтобы просмотреть его таблицы.
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead id="table-head"></thead>
+            <tbody id="table-body"></tbody>
+          </table>
+        </div>
+        <nav class="pagination" aria-label="Страницы таблицы">
+          <button id="previous-page" class="secondary-button" type="button" disabled>← Назад</button>
+          <span id="page-indicator"></span>
+          <button id="next-page" class="secondary-button" type="button" disabled>Далее →</button>
+        </nav>
+      </section>
+      <footer>Данные доступны только вам в открытой вкладке. Закройте страницу, чтобы завершить просмотр.</footer>
+    </main>
+  </body>
+</html>
